@@ -1,0 +1,50 @@
+{
+  "name": "drawio-mcp-validate",
+  "version": "0.1.0",
+  "description": "Headless render-level validation for generated Draw.io diagrams",
+  "type": "module",
+  "main": "./build/index.js",
+  "types": "./build/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "import": "./build/index.js"
+    }
+  },
+  "bin": {
+    "drawio-validate": "build/cli.js"
+  },
+  "scripts": {
+    "build": "rimraf build && tsc && chmod +x build/cli.js",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit",
+    "clean": "rimraf build coverage",
+    "setup": "playwright install chromium",
+    "test": "node --test build/*.test.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "build",
+    "fixtures"
+  ],
+  "keywords": [
+    "drawio",
+    "diagrams.net",
+    "validation",
+    "ci"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "drawio-mcp-server": "workspace:*",
+    "playwright": "1.59.1",
+    "fast-xml-parser": "5.3.4"
+  },
+  "devDependencies": {
+    "@types/node": "25.0.3",
+    "rimraf": "6.1.3",
+    "typescript": "catalog:"
+  }
+}

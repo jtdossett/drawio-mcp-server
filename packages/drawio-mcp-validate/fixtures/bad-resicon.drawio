@@ -1,0 +1,15 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="ResIcon" id="p1">
+    <mxGraphModel dx="800" dy="600" grid="0" page="1">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="goodicon" value="real" style="sketch=0;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="78" height="78" as="geometry"/>
+        </mxCell>
+        <mxCell id="badicon" value="typo" style="sketch=0;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lamdba_funtcion;" vertex="1" parent="1">
+          <mxGeometry x="200" y="40" width="78" height="78" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
