@@ -150,6 +150,7 @@ describe("HTTP transport (stateless per-request)", () => {
     transports: ["http"],
     editorEnabled: false,
     logger: "console",
+    openMode: "off",
     tlsEnabled: false,
     tlsAuto: false,
   };

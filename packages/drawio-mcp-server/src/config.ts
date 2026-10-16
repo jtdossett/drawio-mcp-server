@@ -1,5 +1,7 @@
 import { isIP } from "node:net";
 
+import { OPEN_MODES, type OpenMode } from "./open-editor.js";
+
 /**
  * Application configuration interface
  */
@@ -13,6 +15,7 @@ export interface ServerConfig {
   readonly webSocketUrl?: string;
   readonly host?: string;
   readonly logger: LoggerMode;
+  readonly openMode: OpenMode;
   readonly tlsEnabled: boolean;
   readonly tlsAuto: boolean;
   readonly tlsCert?: string;
@@ -21,6 +24,7 @@ export interface ServerConfig {
 }
 
 export type TransportType = "stdio" | "http";
+export type { OpenMode };
 export type LoggerMode = "console" | "mcp-server";
 
 /**
@@ -32,6 +36,7 @@ const DEFAULT_CONFIG: ServerConfig = {
   transports: ["stdio"],
   editorEnabled: false,
   logger: "console",
+  openMode: "off",
   tlsEnabled: false,
   tlsAuto: false,
 } as const;
@@ -162,6 +167,27 @@ export const parseLoggerValue = (
   );
 };
 
+/**
+ * Parse open mode value - pure function
+ * Accepts "off" or "browser". A bare --open flag is normalised to "browser"
+ * by the caller before it reaches here.
+ */
+export const parseOpenValue = (value: string | undefined): OpenMode | Error => {
+  if (!value) {
+    return new Error("--open flag requires a mode (off|browser)");
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if ((OPEN_MODES as readonly string[]).includes(normalized)) {
+    return normalized as OpenMode;
+  }
+
+  return new Error(
+    `Invalid open mode "${value}". Must be one of: ${OPEN_MODES.join(", ")}`,
+  );
+};
+
 export const parseTransports = (
   values: string[] | undefined,
 ): TransportType[] | Error => {
@@ -237,6 +263,7 @@ export const parseConfig = (args: readonly string[]): ServerConfig | Error => {
   let webSocketUrlValue: string | undefined;
   let hostValue: string | undefined;
   let loggerValue: string | undefined;
+  let openValue: string | undefined;
   let tlsEnabled = false;
   let tlsAuto = false;
   let tlsCert: string | undefined;
@@ -324,6 +351,19 @@ export const parseConfig = (args: readonly string[]): ServerConfig | Error => {
 
       loggerValue = nextValue;
       i += 1;
+    } else if (arg === "--open") {
+      const nextValue = args[i + 1];
+      if (
+        nextValue !== undefined &&
+        (OPEN_MODES as readonly string[]).includes(nextValue.toLowerCase())
+      ) {
+        openValue = nextValue;
+        i += 1;
+      } else {
+        openValue = "browser";
+      }
+    } else if (arg.startsWith("--open=")) {
+      openValue = arg.slice("--open=".length);
     } else if (arg === "--tls") {
       tlsEnabled = true;
     } else if (arg === "--tls-auto") {
@@ -359,6 +399,23 @@ export const parseConfig = (args: readonly string[]): ServerConfig | Error => {
       return parsed;
     }
     logger = parsed;
+  }
+
+  let openMode: OpenMode = DEFAULT_CONFIG.openMode;
+  if (openValue !== undefined) {
+    const parsed = parseOpenValue(openValue);
+    if (parsed instanceof Error) {
+      return parsed;
+    }
+    openMode = parsed;
+  }
+
+  // Opening a browser is only meaningful when this server is the thing
+  // serving Draw.io. Without --editor there is no URL worth opening.
+  if (openMode !== "off" && !editorEnabled) {
+    return new Error(
+      "--open requires --editor (there is no built-in editor to open otherwise)",
+    );
   }
 
   let webSocketUrl: string | undefined;
@@ -430,6 +487,7 @@ export const parseConfig = (args: readonly string[]): ServerConfig | Error => {
       webSocketUrl,
       host,
       logger,
+      openMode,
       tlsEnabled,
       tlsAuto,
       tlsCert,
@@ -453,6 +511,7 @@ export const parseConfig = (args: readonly string[]): ServerConfig | Error => {
       webSocketUrl,
       host,
       logger,
+      openMode,
       tlsEnabled,
       tlsAuto,
       tlsCert,
@@ -475,6 +534,7 @@ export const parseConfig = (args: readonly string[]): ServerConfig | Error => {
     webSocketUrl,
     host,
     logger,
+    openMode,
     tlsEnabled,
     tlsAuto,
     tlsCert,
@@ -534,6 +594,13 @@ export const envToArgs = (env: NodeJS.ProcessEnv): string[] => {
   const logger = env.DRAWIO_MCP_LOGGER;
   if (logger && logger.length > 0) {
     out.push("--logger", logger);
+  }
+
+  const open = env.DRAWIO_MCP_OPEN;
+  if (open && open.length > 0) {
+    // `--open=` form (not `--open <value>`) so an invalid env value surfaces
+    // as a config error instead of silently falling back to the bare flag.
+    out.push(`--open=${open}`);
   }
 
   const tls = env.DRAWIO_MCP_TLS;

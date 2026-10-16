@@ -10,6 +10,7 @@ import {
   parseWebSocketUrlValue,
   parseHostValue,
   parseLoggerValue,
+  parseOpenValue,
   envToArgs,
   defaultConfig,
 } from "./config.js";
@@ -163,6 +164,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -175,6 +177,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -187,6 +190,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -199,6 +203,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -213,6 +218,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -225,6 +231,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -267,6 +274,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -279,6 +287,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -292,6 +301,7 @@ describe("parseConfig", () => {
         transports: ["stdio"],
         editorEnabled: false,
         logger: "console",
+        openMode: "off",
         tlsEnabled: false,
         tlsAuto: false,
       },
@@ -305,6 +315,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -317,6 +328,7 @@ describe("parseConfig", () => {
       transports: ["stdio", "http"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -334,6 +346,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: true,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -346,6 +359,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: true,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -358,6 +372,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -370,6 +385,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: true,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -382,6 +398,7 @@ describe("parseConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -733,6 +750,7 @@ describe("buildConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -747,6 +765,7 @@ describe("buildConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -761,6 +780,7 @@ describe("buildConfig", () => {
       transports: ["stdio"],
       editorEnabled: false,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     });
@@ -920,5 +940,118 @@ describe("TLS configuration", () => {
       "--tls-dir",
       "/data/tls",
     ]);
+  });
+});
+
+describe("parseOpenValue", () => {
+  test("accepts browser", () => {
+    expect(parseOpenValue("browser")).toBe("browser");
+  });
+
+  test("accepts off", () => {
+    expect(parseOpenValue("off")).toBe("off");
+  });
+
+  test("is case and whitespace tolerant", () => {
+    expect(parseOpenValue("  BROWSER ")).toBe("browser");
+  });
+
+  test("unknown mode returns Error", () => {
+    expect(parseOpenValue("chrome")).toBeInstanceOf(Error);
+  });
+
+  test("undefined returns Error", () => {
+    expect(parseOpenValue(undefined)).toBeInstanceOf(Error);
+  });
+});
+
+describe("parseConfig --open", () => {
+  test("defaults to off", () => {
+    const config = parseConfig([]) as ServerConfig;
+    expect(config.openMode).toBe("off");
+  });
+
+  test("bare --open means browser", () => {
+    const config = parseConfig(["--editor", "--open"]) as ServerConfig;
+    expect(config.openMode).toBe("browser");
+  });
+
+  test("--open off is respected", () => {
+    const config = parseConfig(["--editor", "--open", "off"]) as ServerConfig;
+    expect(config.openMode).toBe("off");
+  });
+
+  test("--open=browser equals form", () => {
+    const config = parseConfig(["--editor", "--open=browser"]) as ServerConfig;
+    expect(config.openMode).toBe("browser");
+  });
+
+  test("--open=garbage returns Error", () => {
+    expect(parseConfig(["--editor", "--open=garbage"])).toBeInstanceOf(Error);
+  });
+
+  test("--open without --editor returns Error", () => {
+    const result = parseConfig(["--open"]);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toContain("--open requires --editor");
+  });
+
+  test("--open off without --editor is fine", () => {
+    const config = parseConfig(["--open", "off"]) as ServerConfig;
+    expect(config.openMode).toBe("off");
+  });
+
+  test("a bare --open does not swallow the following flag", () => {
+    const config = parseConfig([
+      "--editor",
+      "--open",
+      "--extension-port",
+      "9999",
+    ]) as ServerConfig;
+    expect(config.openMode).toBe("browser");
+    expect(config.extensionPort).toBe(9999);
+  });
+
+  test("survives the --extension-port return branch", () => {
+    const config = parseConfig([
+      "--editor",
+      "--open",
+      "-p",
+      "8080",
+    ]) as ServerConfig;
+    expect(config.openMode).toBe("browser");
+  });
+
+  test("survives the --http-port return branch", () => {
+    const config = parseConfig([
+      "--editor",
+      "--open",
+      "--http-port",
+      "4000",
+    ]) as ServerConfig;
+    expect(config.openMode).toBe("browser");
+  });
+});
+
+describe("envToArgs DRAWIO_MCP_OPEN", () => {
+  test("maps to the equals form", () => {
+    expect(envToArgs({ DRAWIO_MCP_OPEN: "browser" })).toEqual([
+      "--open=browser",
+    ]);
+  });
+
+  test("absent env emits nothing", () => {
+    expect(envToArgs({})).toEqual([]);
+  });
+
+  test("an invalid env value surfaces as a config Error", () => {
+    const args = envToArgs({ DRAWIO_MCP_OPEN: "nope" });
+    expect(parseConfig([...args, "--editor"])).toBeInstanceOf(Error);
+  });
+
+  test("CLI overrides env because env args come first", () => {
+    const args = [...envToArgs({ DRAWIO_MCP_OPEN: "browser" }), "--editor"];
+    const config = parseConfig([...args, "--open=off"]) as ServerConfig;
+    expect(config.openMode).toBe("off");
   });
 });

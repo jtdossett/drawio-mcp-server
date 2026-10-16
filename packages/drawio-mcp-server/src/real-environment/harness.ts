@@ -77,6 +77,7 @@ export async function createRealEnvironmentContext(): Promise<RealEnvironmentCon
       editorEnabled: true,
       webSocketUrl,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     };
@@ -94,6 +95,7 @@ export async function createRealEnvironmentContext(): Promise<RealEnvironmentCon
       transports: ["http"],
       editorEnabled: true,
       logger: "console",
+      openMode: "off",
       tlsEnabled: false,
       tlsAuto: false,
     };

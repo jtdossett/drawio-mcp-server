@@ -33,6 +33,12 @@ import {
 } from "./config.js";
 import { installDesktopPlugin } from "./install-desktop-plugin.js";
 import {
+  buildEditorUrl,
+  EDITOR_CONNECT_GRACE_MS,
+  EDITOR_CONNECT_TIMEOUT_MS,
+  openInBrowser,
+} from "./open-editor.js";
+import {
   bus_reply_stream,
   bus_request_stream,
   type ConnectedDocumentInfo,
@@ -90,6 +96,7 @@ export type DrawioMcpApp = {
     extensionPort?: number,
     host?: string,
   ) => Promise<WebSocketServer>;
+  waitForFirstDocument: (timeoutMs: number) => Promise<ConnectedDocumentInfo[]>;
   startStdioTransport: () => Promise<void>;
   startHttpServer: (
     httpPort: number,
@@ -112,6 +119,7 @@ Usage: drawio-mcp-server [options]
 Options:
   --extension-port, -p <number>  WebSocket server port for browser extension (default: 3333)
   --editor, -e                   Enable draw.io editor endpoint
+  --open [mode]                  Open the built-in editor in a browser on startup: browser, off (default: off; requires --editor)
   --http-port                    HTTP server port for Streamable HTTP transport (default: 3000)
   --transport                    Transport type: stdio, http (default: stdio)
   --asset-path <path>            Custom path for downloaded assets
@@ -130,6 +138,7 @@ Examples:
   drawio-mcp-server --extension-port 8080     # Use custom extension port 8080
   drawio-mcp-server -p 8080                   # Short form
   drawio-mcp-server --editor                  # Enable draw.io editor endpoint
+  drawio-mcp-server --editor --open           # Enable editor and open it in the default browser
   drawio-mcp-server -e --http                 # Enable editor and HTTP transport
   drawio-mcp-server --editor --asset-path /data/assets # Use custom asset path
   drawio-mcp-server --editor --tls --tls-auto    # HTTPS editor with auto self-signed cert
@@ -446,6 +455,10 @@ export function createDrawioMcpApp(options?: {
   const conns = new Map<string, ConnectionEntry>();
   const DOCUMENT_SYNC_TIMEOUT_MS = 1000;
 
+  // Resolved whenever the connected-document set changes. Lets callers block
+  // on "a Draw.io client has actually registered" instead of racing it.
+  const document_waiters = new Set<() => void>();
+
   // Lazily resolved log — uses console logger until a server logger is
   // explicitly requested via --logger mcp-server, in which case the first
   // McpServer created will be used for the logger binding.
@@ -566,6 +579,15 @@ export function createDrawioMcpApp(options?: {
   }
 
   function broadcastDocumentsChanged() {
+    for (const notify of [...document_waiters]) {
+      document_waiters.delete(notify);
+      try {
+        notify();
+      } catch {
+        // a waiter throwing must not block the broadcast
+      }
+    }
+
     const documents = listKnownDocuments();
     const frame = JSON.stringify({
       __control: "documents-changed",
@@ -618,6 +640,47 @@ export function createDrawioMcpApp(options?: {
     );
   }
 
+  /**
+   * Resolve once at least one Draw.io document has registered over the
+   * WebSocket, or after `timeoutMs` - whichever comes first.
+   *
+   * Returns the documents known at that point, so an empty array means the
+   * wait timed out rather than connected.
+   */
+  async function waitForFirstDocument(
+    timeoutMs: number,
+  ): Promise<ConnectedDocumentInfo[]> {
+    const deadline = Date.now() + timeoutMs;
+
+    for (;;) {
+      const documents = listKnownDocuments();
+      if (documents.length > 0) {
+        return documents;
+      }
+
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        return [];
+      }
+
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          document_waiters.delete(finish);
+          resolve();
+        };
+
+        const timer = setTimeout(finish, remaining);
+        // Waiting for a browser must not keep an otherwise idle process alive.
+        timer.unref?.();
+        document_waiters.add(finish);
+      });
+    }
+  }
+
   const document_routing = {
     list_documents: async (): Promise<ConnectedDocumentInfo[]> => {
       await syncAllDocuments();
@@ -656,7 +719,14 @@ export function createDrawioMcpApp(options?: {
       }
 
       await syncAllDocuments();
-      const documents = listKnownDocuments();
+      let documents = listKnownDocuments();
+
+      // Under --open the server launched the browser itself, so "nothing
+      // connected yet" is a startup race rather than a user error: give the
+      // editor a bounded grace period to finish booting before failing.
+      if (documents.length === 0 && config.openMode !== "off") {
+        documents = await waitForFirstDocument(EDITOR_CONNECT_GRACE_MS);
+      }
 
       if (documents.length === 0) {
         throw new Error("No connected Draw.io documents");
@@ -1105,6 +1175,7 @@ export function createDrawioMcpApp(options?: {
     emitter,
     close,
     startWebSocketServer,
+    waitForFirstDocument,
     startStdioTransport: async () => {
       await start_stdio_transport(createMcpServer, getLog());
     },
@@ -1227,8 +1298,16 @@ async function main() {
   // it. A stdio-only run previously bound port 3000 unconditionally,
   // colliding with common dev servers while serving nothing useful
   // (see upstream issue #66).
+  let listeningHttpPort: number | undefined;
   if (features.enableMcp || features.enableEditor) {
-    await app.startHttpServer(config.httpPort, config, features);
+    const started = await app.startHttpServer(
+      config.httpPort,
+      config,
+      features,
+    );
+    // Use the port the server actually bound, which differs from the
+    // configured one when --http-port 0 asks the OS to pick.
+    listeningHttpPort = started.port;
   } else {
     app.log.debug(
       "HTTP server not started: no HTTP surface enabled (stdio-only run). Use --transport http or --editor to serve HTTP.",
@@ -1244,7 +1323,67 @@ async function main() {
     }
   }
 
+  if (
+    config.openMode === "browser" &&
+    features.enableEditor &&
+    listeningHttpPort !== undefined
+  ) {
+    await openEditorInBrowser(app, config, listeningHttpPort);
+  }
+
   app.log.debug(`Draw.io MCP Server running on ${config.transports}`);
+}
+
+/**
+ * Launch the user's browser at the built-in editor and wait for the injected
+ * plugin to register a document.
+ *
+ * Every failure here is non-fatal: the server is already serving, so the
+ * worst case degrades to the pre-existing manual flow and we say so.
+ */
+async function openEditorInBrowser(
+  app: DrawioMcpApp,
+  config: ServerConfig,
+  httpPort: number,
+): Promise<void> {
+  const url = buildEditorUrl({
+    scheme: config.tlsEnabled ? "https" : "http",
+    host: config.host,
+    port: httpPort,
+  });
+
+  const failure = await openInBrowser(url, app.log);
+
+  if (failure) {
+    app.log.log(
+      "warning",
+      `[open] could not open a browser automatically: ${failure.message}. Open ${url} manually to connect Draw.io.`,
+    );
+    return;
+  }
+
+  if (config.tlsEnabled && config.tlsAuto) {
+    app.log.log(
+      "warning",
+      "[open] TLS is using a self-signed certificate; the browser will warn before the editor loads.",
+    );
+  }
+
+  app.log.debug(`[open] opened ${url}, waiting for Draw.io to connect`);
+
+  const documents = await app.waitForFirstDocument(EDITOR_CONNECT_TIMEOUT_MS);
+
+  if (documents.length === 0) {
+    app.log.log(
+      "warning",
+      `[open] no Draw.io document connected within ${Math.round(EDITOR_CONNECT_TIMEOUT_MS / 1000)}s. The server is running; open ${url} to connect.`,
+    );
+    return;
+  }
+
+  app.log.debug(
+    `[open] Draw.io connected with ${documents.length} document(s)`,
+  );
 }
 
 const isMainModule = process.argv[1]

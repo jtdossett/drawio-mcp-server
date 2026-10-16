@@ -7,6 +7,7 @@ Every CLI flag has a matching environment variable. CLI flags take precedence ov
 | Flag | Environment Variable | Description | Default |
 |------|----------------------|-------------|---------|
 | `--editor`, `-e` | `DRAWIO_MCP_EDITOR` | Enable built-in Draw.io editor (`true`/`false`) | disabled |
+| `--open [mode]` | `DRAWIO_MCP_OPEN` | Open the built-in editor in your default browser on startup: `browser` or `off`. Requires `--editor`. | `off` |
 | `--extension-port`, `-p` | `DRAWIO_MCP_EXTENSION_PORT` | WebSocket port for browser extension | 3333 |
 | `--http-port` | `DRAWIO_MCP_HTTP_PORT` | HTTP transport port | 3000 |
 | `--transport` | `DRAWIO_MCP_TRANSPORT` | Transport type: `stdio`, `http`, or `stdio,http` | `stdio` |
@@ -98,6 +99,38 @@ The `--editor` flag automatically enables the HTTP transport. If you need a cust
 ```
 
 Editor will be at: `http://localhost:4000/`
+
+### Opening the editor automatically
+
+By default the server serves the editor but waits for you to visit the URL. Add `--open` and it hands that URL to your default browser at startup, so a Draw.io document connects without any manual step:
+
+```json
+{
+  "mcpServers": {
+    "drawio": {
+      "command": "npx",
+      "args": ["-y", "drawio-mcp-server", "--editor", "--open"]
+    }
+  }
+}
+```
+
+A bare `--open` means `--open browser`. `--open off` is the default and does nothing.
+
+Two behaviours come with it:
+
+- **Startup waits** up to 30 seconds for the browser to boot Draw.io and register a document, and logs a warning (with the URL to open by hand) if it does not.
+- **Tool calls wait** up to 20 seconds for that first document instead of failing immediately with `No connected Draw.io documents`. This covers the gap between your MCP host starting the server and the browser finishing its load.
+
+Neither is fatal. If no browser can be launched the server stays up and logs the URL, which is exactly the behaviour you get without the flag.
+
+How the browser is chosen, in order:
+
+1. `$BROWSER`, if set (given the URL as its single argument).
+2. On WSL, `wslview` if installed, otherwise Windows `start` — a Linux `xdg-open` inside WSL usually has no graphical browser to hand off to.
+3. The platform default: `open` on macOS, `start` on Windows, `xdg-open` on Linux.
+
+With `--tls --tls-auto` the certificate is self-signed, so the browser will show an interstitial warning before the editor loads and nothing will connect until you click through it.
 
 ## HTTP Transport
 

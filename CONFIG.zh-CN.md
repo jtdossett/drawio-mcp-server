@@ -9,6 +9,7 @@
 | 标志 | 环境变量 | 描述 | 默认值 |
 |------|----------------------|-------------|---------|
 | `--editor`, `-e` | `DRAWIO_MCP_EDITOR` | 启用内置 Draw.io 编辑器（`true`/`false`） | 禁用 |
+| `--open [mode]` | `DRAWIO_MCP_OPEN` | 启动时在默认浏览器中打开内置编辑器：`browser` 或 `off`。需要配合 `--editor` 使用。 | `off` |
 | `--extension-port`, `-p` | `DRAWIO_MCP_EXTENSION_PORT` | 浏览器扩展使用的 WebSocket 端口 | 3333 |
 | `--http-port` | `DRAWIO_MCP_HTTP_PORT` | HTTP 传输端口 | 3000 |
 | `--transport` | `DRAWIO_MCP_TRANSPORT` | 传输类型：`stdio`、`http` 或 `stdio,http` | `stdio` |
@@ -100,6 +101,38 @@ http://localhost:3000/
 ```
 
 编辑器位于：`http://localhost:4000/`
+
+### 自动打开编辑器
+
+默认情况下，服务器只负责提供编辑器服务，等待你自行访问该 URL。加上 `--open` 后，服务器会在启动时把该 URL 交给你的默认浏览器，从而无需任何手动步骤即可连接上一个 Draw.io 文档：
+
+```json
+{
+  "mcpServers": {
+    "drawio": {
+      "command": "npx",
+      "args": ["-y", "drawio-mcp-server", "--editor", "--open"]
+    }
+  }
+}
+```
+
+单独使用 `--open` 等同于 `--open browser`。`--open off` 是默认值，不执行任何操作。
+
+该标志会带来两项行为：
+
+- **启动等待**：最多等待 30 秒，让浏览器完成 Draw.io 的加载并注册文档；若未成功，则记录一条警告（其中包含可手动打开的 URL）。
+- **工具调用等待**：最多等待 20 秒以获取首个文档，而不是立即以 `No connected Draw.io documents` 失败。这弥补了 MCP 宿主启动服务器与浏览器完成加载之间的时间差。
+
+两者都不会导致致命错误。如果无法启动任何浏览器，服务器仍会继续运行并记录该 URL，这与不使用该标志时的行为完全一致。
+
+浏览器的选择顺序如下：
+
+1. `$BROWSER`（若已设置，URL 将作为其唯一参数传入）。
+2. 在 WSL 上，若已安装 `wslview` 则使用它，否则使用 Windows 的 `start` —— 在 WSL 内部的 Linux `xdg-open` 通常没有可供移交的图形化浏览器。
+3. 各平台默认程序：macOS 使用 `open`，Windows 使用 `start`，Linux 使用 `xdg-open`。
+
+使用 `--tls --tls-auto` 时证书为自签名，因此浏览器会在加载编辑器前显示一个插页式警告，在你点击继续之前不会建立任何连接。
 
 ## HTTP 传输
 
