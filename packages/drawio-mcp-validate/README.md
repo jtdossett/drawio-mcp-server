@@ -33,10 +33,17 @@ ask a real Draw.io whether the shape resolved.
 
 ## Install
 
+Not on npm. Install from the release tarball:
+
 ```sh
-pnpm add -D drawio-mcp-validate
-pnpm exec playwright install chromium
+npm i -D https://github.com/jtdossett/drawio-mcp-server/releases/download/validate-v0.1.0/drawio-mcp-validate-0.1.0.tgz
+npx playwright install chromium   # only needed for the headless mode
 ```
+
+The forked `drawio-mcp-server` it depends on is pulled in automatically from
+the same release; you do not install it yourself. Both tarballs are built
+with `pnpm pack` so the `workspace:` and `catalog:` protocols are resolved -
+`npm pack` leaves `catalog:` in place and npm then refuses to install.
 
 ## CLI
 
