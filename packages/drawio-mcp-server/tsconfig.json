@@ -4,6 +4,7 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "outDir": "./build",
+    "declaration": true,
     "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
